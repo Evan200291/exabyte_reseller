@@ -546,7 +546,7 @@ export function startAdminPanel() {
         if (url.pathname === "/api/payments") return json(res, { success: true, payments: Object.values(store.data.payments).filter((payment) => payment.userId === user.id) });
         if (url.pathname === "/api/orders") return json(res, { success: true, orders: Object.values(store.data.orders).filter((order) => order.userId === user.id) });
       }
-      if (url.pathname === "/") { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(dashboard()); }
+      if (url.pathname === "/") { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(await dashboard()); }
       if (url.pathname === "/products") { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(productsPage(url)); }
       if (url.pathname === "/packages") { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(packagesPage(url)); }
       if (url.pathname === "/notes") { res.writeHead(200, { "Content-Type": "text/html" }); return res.end(notesPage(url)); }
