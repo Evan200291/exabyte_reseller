@@ -44,6 +44,11 @@ export class RaccoonProvider extends Provider {
 
   async balance() {
     if (!this.apiKey) return null;
-    return this.request("/api/dealer/balance", { headers: this.headers() });
+    try {
+      const response = await this.request("/api/dealer/balance", { headers: this.headers(), timeoutMs: 5000 });
+      const bal = response?.balance ?? response?.credit ?? response?.wallet ?? response?.data?.balance;
+      if (bal !== undefined) return { balance: Number(bal), currency: response?.currency || "USD", raw: response };
+      return response;
+    } catch { return null; }
   }
 }

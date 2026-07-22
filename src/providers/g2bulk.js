@@ -215,4 +215,19 @@ export class G2BulkProvider extends Provider {
       });
     } catch { return null; }
   }
+
+  async balance() {
+    if (!this.apiKey) return null;
+    // G2Bulk balance endpoints vary by instance - try common patterns
+    const endpoints = ["/balance", "/account/balance", "/wallet", "/me", "/user/balance"];
+    for (const endpoint of endpoints) {
+      try {
+        const response = await this.request(endpoint, { headers: this.headers(true), timeoutMs: 5000 });
+        // Extract balance from various response formats
+        const bal = response?.balance ?? response?.wallet?.balance ?? response?.data?.balance ?? response?.credit ?? response?.credits ?? response?.amount;
+        if (bal !== undefined) return { balance: Number(bal), currency: response?.currency || "USD", raw: response };
+      } catch { /* try next */ }
+    }
+    return null;
+  }
 }

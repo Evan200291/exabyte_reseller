@@ -35,4 +35,25 @@ export async function syncAllProviders() {
   }
 }
 
+export async function fetchAllBalances() {
+  const results = [];
+  for (const provider of providers) {
+    if (!provider.apiKey) {
+      results.push({ id: provider.id, name: provider.name, status: "no_key", balance: null, currency: null });
+      continue;
+    }
+    try {
+      const data = await provider.balance?.();
+      if (data) {
+        results.push({ id: provider.id, name: provider.name, status: "ok", balance: data.balance, currency: data.currency || "USD", raw: data.raw });
+      } else {
+        results.push({ id: provider.id, name: provider.name, status: "unsupported", balance: null, currency: null });
+      }
+    } catch (error) {
+      results.push({ id: provider.id, name: provider.name, status: "error", error: error.message, balance: null, currency: null });
+    }
+  }
+  return results;
+}
+
 

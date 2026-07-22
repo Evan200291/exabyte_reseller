@@ -4,65 +4,111 @@ import { config } from "./config.js";
 import { store } from "./store.js";
 import { categories, apiDocs } from "./providers/base.js";
 import { adminBroadcast } from "./telegram.js";
+import { fetchAllBalances } from "./providers/index.js";
 import { logger } from "./logger.js";
+
+// Cache for API balances (refreshed every 5 minutes or on demand)
+let balanceCache = { data: [], lastFetch: 0 };
+async function getApiBalances(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && balanceCache.data.length && now - balanceCache.lastFetch < 300000) {
+    return balanceCache.data;
+  }
+  try {
+    balanceCache.data = await fetchAllBalances();
+    balanceCache.lastFetch = now;
+  } catch (error) {
+    logger.warn("Failed to fetch API balances", { message: error.message });
+  }
+  return balanceCache.data;
+}
 
 const money = (amount) => `${Number(amount || 0).toLocaleString()} MMK`;
 const usdt = (amount) => `${Number(amount || 0).toFixed(2)} USDT`;
 const esc = (text) => String(text ?? "").replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
 
 function layout(title, body) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
-  :root{--green:#18c66a;--green-dark:#087a46;--green-soft:#eafbf2;--green-tint:#f4fff8;--ink:#12211a;--muted:#607267;--line:#d7ebdf;--bg:#f6fbf8;--card:#fff;--bad:#b42318;--warn:#c48200;--shadow:0 10px 28px rgba(15,80,45,.07)}
-  *{box-sizing:border-box}body{font-family:Inter,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
-  .top{background:#fff;border-bottom:1px solid var(--line);padding:10px 18px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5;box-shadow:var(--shadow)}
-  .top b{color:var(--green-dark);font-size:17px;margin-right:12px}
-  .top a{color:#214632;text-decoration:none;font-size:13px;padding:8px 10px;border-radius:6px;font-weight:650}
-  .top a:hover{background:var(--green-soft);color:var(--green-dark)}
-  .wrap{padding:18px;max-width:1360px;margin:auto}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
-  .card h2,.card h3{margin:2px 0 10px}
-  .kpi{border-radius:12px;padding:18px;color:#fff;background:linear-gradient(135deg,#18c66a,#087a46);box-shadow:var(--shadow)}
-  .kpi.blue{background:linear-gradient(135deg,#3a7bd5,#00d2ff)}
-  .kpi.orange{background:linear-gradient(135deg,#f5793a,#c34c00)}
-  .kpi.purple{background:linear-gradient(135deg,#7b4dff,#4a26c9)}
-  .kpi small{opacity:.9;font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:800}
-  .kpi h2{font-size:24px;margin:6px 0 2px}
-  .kpi p{margin:0;font-size:12px;opacity:.9}
-  .table{overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:var(--shadow)}
-  table{width:100%;border-collapse:separate;border-spacing:0;min-width:900px}
-  th,td{padding:12px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
-  th{position:sticky;top:0;background:#dcfaea;color:#075e38;font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;z-index:1}
-  tbody tr:hover{background:var(--green-tint)}tbody tr:last-child td{border-bottom:0}
-  input,select,button,textarea{padding:9px 10px;border:1px solid #b8d8c5;border-radius:6px;max-width:100%;background:#fff;color:var(--ink);font:inherit}
-  input:focus,select:focus,textarea:focus{outline:2px solid #9ff0c4;border-color:var(--green)}
-  textarea{min-height:80px;width:100%;resize:vertical}
-  button,.button{background:var(--green);border:1px solid var(--green);color:#fff;cursor:pointer;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:6px;padding:9px 12px;font-size:13px;line-height:1;white-space:nowrap}
-  button:hover,.button:hover{background:var(--green-dark);border-color:var(--green-dark)}
-  .button.secondary{background:#fff;color:var(--green-dark);border-color:var(--line)}
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{--primary:#6366f1;--primary-dark:#4f46e5;--primary-soft:#eef2ff;--primary-tint:#f5f7ff;--accent:#10b981;--accent-dark:#059669;--ink:#1e293b;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--card:#fff;--bad:#ef4444;--warn:#f59e0b;--shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1);--shadow-lg:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;min-height:100vh}
+  .top{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#3730a3 100%);padding:0 24px;display:flex;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:50;box-shadow:var(--shadow-lg)}
+  .top b{color:#fff;font-size:18px;font-weight:800;padding:16px 0;margin-right:32px;letter-spacing:-0.02em}
+  .top-nav{display:flex;gap:2px;flex-wrap:wrap;padding:8px 0}
+  .top a{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px;padding:10px 14px;border-radius:8px;font-weight:600;transition:all .15s}
+  .top a:hover{background:rgba(255,255,255,.15);color:#fff}
+  .wrap{padding:24px;max-width:1400px;margin:auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:var(--shadow);transition:box-shadow .2s}
+  .card:hover{box-shadow:var(--shadow-lg)}
+  .card h2{font-size:18px;font-weight:700;margin-bottom:12px;color:var(--ink)}
+  .card h3{font-size:16px;font-weight:700;margin-bottom:12px;color:var(--ink)}
+  .kpi{border-radius:16px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow-lg)}
+  .kpi::before{content:'';position:absolute;top:-50%;right:-50%;width:100%;height:200%;background:radial-gradient(circle,rgba(255,255,255,.1) 0%,transparent 60%);pointer-events:none}
+  .kpi.green{background:linear-gradient(135deg,#10b981,#059669)}
+  .kpi.blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+  .kpi.orange{background:linear-gradient(135deg,#f59e0b,#d97706)}
+  .kpi.purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
+  .kpi.pink{background:linear-gradient(135deg,#ec4899,#be185d)}
+  .kpi.cyan{background:linear-gradient(135deg,#06b6d4,#0891b2)}
+  .kpi.slate{background:linear-gradient(135deg,#475569,#334155)}
+  .kpi small{opacity:.9;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  .kpi h2{font-size:28px;font-weight:800;margin:8px 0 4px;letter-spacing:-0.02em}
+  .kpi p{margin:0;font-size:12px;opacity:.85}
+  .balance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px}
+  .balance-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:4px}
+  .balance-card .provider{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .balance-card .amount{font-size:22px;font-weight:800;color:var(--ink)}
+  .balance-card .currency{font-size:12px;color:var(--muted)}
+  .balance-card.error .amount{color:var(--bad);font-size:13px;font-weight:600}
+  .balance-card.unconfigured{opacity:.5}
+  .table{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+  table{width:100%;border-collapse:collapse;min-width:800px}
+  th,td{padding:14px 16px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+  th{position:sticky;top:0;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;z-index:1}
+  tbody tr{transition:background .15s}tbody tr:hover{background:#f8fafc}tbody tr:last-child td{border-bottom:0}
+  input,select,button,textarea{padding:10px 12px;border:1px solid var(--line);border-radius:8px;max-width:100%;background:#fff;color:var(--ink);font:inherit;transition:all .15s}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  textarea{min-height:100px;width:100%;resize:vertical}
+  button,.button{background:var(--primary);border:1px solid var(--primary);color:#fff;cursor:pointer;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;padding:10px 16px;font-size:13px;line-height:1;white-space:nowrap;transition:all .15s}
+  button:hover,.button:hover{background:var(--primary-dark);border-color:var(--primary-dark);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .button.secondary{background:#fff;color:var(--primary);border-color:var(--line)}
+  .button.secondary:hover{background:var(--primary-soft);border-color:var(--primary)}
   .button.warn{background:var(--warn);border-color:var(--warn)}
-  .muted{color:var(--muted)}.bad{color:var(--bad);font-weight:700}.good{color:#009b58;font-weight:700}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .pill{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:var(--green-soft);color:var(--green-dark);font-weight:800;font-size:12px}
-  .pager{justify-content:flex-end;padding:10px 12px}
-  .pager a,.pager span.num{padding:6px 10px;border:1px solid var(--line);border-radius:6px;color:var(--green-dark);text-decoration:none;background:#fff;font-weight:800}
-  .pager .num.active{background:var(--green);color:#fff;border-color:var(--green)}
-  .pager a:hover{background:var(--green-soft)}
-  .actions form{display:inline-flex;gap:6px;margin:2px}
+  .button.warn:hover{background:#d97706;border-color:#d97706}
+  .button.danger{background:var(--bad);border-color:var(--bad)}
+  .button.danger:hover{background:#dc2626;border-color:#dc2626}
+  .muted{color:var(--muted)}.bad{color:var(--bad);font-weight:600}.good{color:var(--accent);font-weight:600}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;padding:5px 12px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-weight:700;font-size:12px}
+  .pill.success{background:#d1fae5;color:#059669}
+  .pill.warning{background:#fef3c7;color:#d97706}
+  .pill.danger{background:#fee2e2;color:#dc2626}
+  .pager{justify-content:flex-end;padding:12px 16px}
+  .pager a,.pager span.num{padding:8px 12px;border:1px solid var(--line);border-radius:8px;color:var(--ink);text-decoration:none;background:#fff;font-weight:600;font-size:13px;transition:all .15s}
+  .pager .num.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .pager a:hover{background:var(--primary-soft);border-color:var(--primary)}
+  .actions{display:flex;gap:6px;flex-wrap:wrap}.actions form{display:inline-flex;gap:6px}
   .small{font-size:12px}
-  .logo{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:10px;background:var(--green-soft);color:var(--green-dark);margin-right:10px;font-weight:900;letter-spacing:.02em;vertical-align:middle}
-  .product-cell{min-width:220px}.product-title{font-weight:850;font-size:15px}
-  .revenue-input{width:78px;font-weight:800;padding:7px 9px}
-  .note-preview{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-  pre{white-space:pre-wrap;font-size:12px}
-  .subnav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-  .subnav a{padding:8px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--green-dark);text-decoration:none;font-weight:700;font-size:12px}
-  .subnav a.active{background:var(--green);color:#fff;border-color:var(--green)}
-  @media(max-width:760px){body{font-size:13px}.wrap{padding:10px}.top{padding:10px}.top b{width:100%;margin-right:0}.top a{font-size:12px;padding:7px}.card{padding:12px}table{font-size:12px;min-width:820px}}
-  </style></head><body><div class="top"><b>${esc(config.storeName)}</b>
+  .logo{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary-soft),#dbeafe);color:var(--primary);margin-right:12px;font-weight:800;font-size:13px;letter-spacing:.02em;vertical-align:middle}
+  .product-cell{min-width:240px}.product-title{font-weight:700;font-size:14px}
+  .revenue-input{width:80px;font-weight:700;padding:8px 10px}
+  .note-preview{max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  pre{white-space:pre-wrap;font-size:12px;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid var(--line)}
+  .subnav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .subnav a{padding:10px 16px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:600;font-size:13px;transition:all .15s}
+  .subnav a:hover{border-color:var(--primary);color:var(--primary)}
+  .subnav a.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:12px}
+  @media(max-width:768px){body{font-size:13px}.wrap{padding:16px}.top{padding:0 16px}.top b{font-size:16px;margin-right:16px}.top a{font-size:12px;padding:8px 10px}.card{padding:16px;border-radius:12px}table{font-size:12px;min-width:700px}.kpi h2{font-size:24px}}
+</style></head><body><div class="top"><b>${esc(config.storeName)}</b><nav class="top-nav">
   <a href="/">Dashboard</a>
   <a href="/products">Products</a>
-  <a href="/notes">Product Notes</a>
+  <a href="/notes">Notes</a>
   <a href="/broadcast">Broadcast</a>
   <a href="/payments/settings">Payment Methods</a>
   <a href="/users">Users</a>
@@ -70,7 +116,7 @@ function layout(title, body) {
   <a href="/orders">Orders</a>
   <a href="/errors">API Errors</a>
   <a href="/api-docs">API Docs</a>
-  </div><main class="wrap">${body}</main></body></html>`;
+</nav></div><main class="wrap">${body}</main></body></html>`;
 }
 
 function auth(req, res) {
@@ -107,7 +153,7 @@ function requireApiUser(req, res) {
 }
 
 // ---------- Dashboard ----------
-function dashboard() {
+async function dashboard() {
   const products = Object.values(store.data.products);
   const users = Object.values(store.data.users);
   const orders = Object.values(store.data.orders);
@@ -115,6 +161,15 @@ function dashboard() {
   const totals = store.totals();
   const recentOrders = orders.slice(-8).reverse();
   const recentPayments = Object.values(store.data.payments).slice(-8).reverse();
+
+  // Fetch API balances
+  const balances = await fetchAllBalances();
+  const balanceCards = balances.map((b) => {
+    const statusClass = b.error ? "balance-error" : (b.balance > 10 ? "balance-ok" : "balance-low");
+    const display = b.error ? `<span class="bad">Error</span>` : `<h2>${usdt(b.balance)}</h2>`;
+    const detail = b.error ? `<p class="small">${esc(b.error)}</p>` : `<p class="small">${b.currency || "USDT"}</p>`;
+    return `<div class="balance-card ${statusClass}"><small>${esc(b.name)}</small>${display}${detail}</div>`;
+  }).join("");
 
   const orderRows = recentOrders.map((o) => `<tr><td><code>${esc(o.id)}</code></td><td><code>${esc(o.userId)}</code></td><td>${esc(o.productName || "")}</td><td>${o.qty || 1}</td><td>${money(o.total || 0)}</td><td class="good">${money(o.profit || 0)}</td><td><span class="pill">${esc(o.status || "")}</span></td></tr>`).join("") || `<tr><td colspan="7" class="muted">No orders yet.</td></tr>`;
   const paymentRows = recentPayments.map((p) => `<tr><td><code>${esc(p.id)}</code></td><td><code>${esc(p.userId)}</code></td><td>${money(p.amount || 0)}</td><td>${esc(p.method?.name || "")}</td><td><span class="pill">${esc(p.status)}</span></td><td class="small muted">${esc(p.createdAt || "")}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No payments yet.</td></tr>`;
@@ -126,6 +181,7 @@ function dashboard() {
       <div class="kpi orange"><small>Accepted Top-ups</small><h2>${money(totals.acceptedTotal)}</h2><p>${totals.acceptedPayments} payments</p></div>
       <div class="kpi purple"><small>Pending Top-ups</small><h2>${money(totals.pendingTotal)}</h2><p>${totals.pendingPayments} pending</p></div>
     </div>
+    <div class="card"><h3>💰 API Provider Balances</h3><div class="balance-grid">${balanceCards || '<p class="muted">No providers configured.</p>'}</div></div>
     <div class="grid">
       <div class="card"><small class="muted">Users</small><h2>${users.length}</h2><span class="muted small">Blocked: ${users.filter((u) => u.blocked).length}</span></div>
       <div class="card"><small class="muted">Packages</small><h2>${products.length}</h2><span class="muted small">Out of stock: ${products.filter((p) => Number(p.stock || 0) <= 0).length}</span></div>

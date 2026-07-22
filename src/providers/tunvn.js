@@ -69,5 +69,18 @@ export class TunvnProvider extends Provider {
     }
     throw lastError || new Error("TunVN purchase endpoint is not available");
   }
+
+  async balance() {
+    if (!this.apiKey) return null;
+    const endpoints = ["/api/balance", "/api/dealer/balance", "/api/wallet", "/api/me"];
+    for (const endpoint of endpoints) {
+      try {
+        const response = await this.request(endpoint, { headers: this.headers(), timeoutMs: 5000 });
+        const bal = response?.balance ?? response?.wallet ?? response?.credit ?? response?.data?.balance;
+        if (bal !== undefined) return { balance: Number(bal), currency: response?.currency || "USDT", raw: response };
+      } catch { /* try next */ }
+    }
+    return null;
+  }
 }
 
