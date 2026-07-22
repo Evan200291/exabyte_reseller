@@ -44,7 +44,7 @@ export const config = {
   storeName: process.env.STORE_NAME || "Auto Delivery Store",
   contactText: process.env.CONTACT_TEXT || "Contact support for help.",
   adminHost: process.env.ADMIN_HOST || "127.0.0.1",
-  adminPort: intEnv("ADMIN_PORT", 3000),
+  adminPort: intEnv("ADMIN_PORT", 45452),
   adminPassword: process.env.ADMIN_PASSWORD || "",
   customerBotToken: process.env.CUSTOMER_BOT_TOKEN || "",
   paymentBotToken: process.env.PAYMENT_BOT_TOKEN || "",
