@@ -1,0 +1,10 @@
+﻿.env
+data/
+logs/
+node_modules/
+*.log
+~$*.docx
+*.docx
+*.pdf
+.claude/
+.agents/
